@@ -24,6 +24,17 @@ function generateRoomId() {
     .join("");
 }
 
+// The game's netcode is migrating PartialState -> RoomFrame (same data,
+// patches moved from msg.patches to msg.state.patches). Normalize RoomFrame
+// into the old PartialState shape so downstream consumers don't need to
+// know about both formats. Remove once PartialState is fully retired.
+function normalizePartialState(msg) {
+  if (msg && msg.type === "RoomFrame") {
+    return { ...msg, type: "PartialState", patches: msg.state?.patches || [] };
+  }
+  return msg;
+}
+
 function normalizeCookie(cookie) {
   const trimmed = (cookie || "").trim();
   if (!trimmed) return "";
@@ -142,7 +153,7 @@ class Connection {
     }
 
     if (this.onMessage) {
-      this.onMessage(parsed);
+      this.onMessage(normalizePartialState(parsed));
     }
   }
 
@@ -152,4 +163,4 @@ class Connection {
 
 }
 
-module.exports = { Connection, DEFAULTS };
+module.exports = { Connection, DEFAULTS, normalizePartialState };
