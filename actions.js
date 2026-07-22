@@ -28,7 +28,7 @@ class Actions {
   ping(id = Date.now()) { this._game("Ping", { id }); }
   setSelectedGame(gameName = GAME) { this._room("SetSelectedGame", { gameName }); }
   voteForGame(gameName = GAME) { this._room("VoteForGame", { gameName }); }
-  restartGame() { this._room("RestartGame"); }
+  restartGame(gameName = GAME) { this._room("RestartGame", { name: gameName }); }
   checkWeatherStatus() { this._game("CheckWeatherStatus"); }
 
   // =====================
