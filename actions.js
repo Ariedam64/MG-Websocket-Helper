@@ -19,8 +19,8 @@ class Actions {
   // =====================
 
   ping(id = Date.now()) { this._game("Ping", { id }); }
-  setSelectedGame(gameId = GAME) { this._room("SetSelectedGame", { gameId }); }
-  voteForGame(gameId = GAME) { this._room("VoteForGame", { gameId }); }
+  setSelectedGame(gameName = GAME) { this._room("SetSelectedGame", { gameName }); }
+  voteForGame(gameName = GAME) { this._room("VoteForGame", { gameName }); }
   restartGame() { this._room("RestartGame"); }
   checkWeatherStatus() { this._game("CheckWeatherStatus"); }
 
@@ -29,12 +29,11 @@ class Actions {
   // =====================
 
   chat(message) { this._room("Chat", { message }); }
-  emote(emoteType) { this._room("Emote", { emoteType }); }
+  emote(emoteType, heartColor) { this._room("Emote", { emoteType, heartColor }); }
   wish(itemId) { this._game("Wish", { itemId }); }
-  kickPlayer(playerId) { this._room("KickPlayer", { playerId }); }
+  kickPlayer(targetPlayerId) { this._room("KickPlayer", { targetPlayerId }); }
   setPlayerData({ name, cosmetic } = {}) { this._room("SetPlayerData", { name, cosmetic }); }
   usurpHost() { this._game("UsurpHost"); }
-  reportSpeakingStart() { this._game("ReportSpeakingStart"); }
 
   // =====================
   // Movement
@@ -47,10 +46,7 @@ class Actions {
   // Shop / Purchases
   // =====================
 
-  purchaseSeed(species) { this._game("PurchaseSeed", { species }); }
-  purchaseTool(toolId) { this._game("PurchaseTool", { toolId }); }
-  purchaseEgg(eggId) { this._game("PurchaseEgg", { eggId }); }
-  purchaseDecor(decorId) { this._game("PurchaseDecor", { decorId }); }
+  purchaseShopItem(shop, item) { this._game("PurchaseShopItem", { shop, item }); }
 
   // =====================
   // Garden / Crops
@@ -105,9 +101,15 @@ class Actions {
   movePetSlot(movePetSlotId, toPetSlotIndex) {
     this._game("MovePetSlot", { movePetSlotId, toPetSlotIndex });
   }
-  petPositions(petPositions) { this._game("PetPositions", { petPositions }); }
   growEgg(slot, eggId) { this._game("GrowEgg", { slot, eggId }); }
   hatchEgg(slot) { this._game("HatchEgg", { slot }); }
+  ridePet(petItemId) { this._game("RidePet", { petItemId }); }
+  dismountPet() { this._game("DismountPet"); }
+  requestPetGreet(position) { this._game("RequestPetGreet", { position }); }
+  replenishPotion(petItemId) { this._game("ReplenishPotion", { petItemId }); }
+  xpPotion(petItemId) { this._game("XPPotion", { petItemId }); }
+  thundercharge(petItemId, position) { this._game("Thundercharge", { petItemId, position }); }
+  dawnCapture(petItemId, position) { this._game("DawnCapture", { petItemId, position }); }
 
   // =====================
   // Inventory / Storage
@@ -118,8 +120,8 @@ class Actions {
   }
   setSelectedItem(itemIndex) { this._game("SetSelectedItem", { itemIndex }); }
   toggleLockItem(itemId) { this._game("ToggleLockItem", { itemId }); }
-  dropObject(slotIndex) { this._game("DropObject", { slotIndex }); }
-  pickupObject(objectId) { this._game("PickupObject", { objectId }); }
+  dropObject() { this._game("DropObject"); }
+  pickupObject() { this._game("PickupObject"); }
   putItemInStorage(itemId, storageId, { toStorageIndex, quantity } = {}) {
     const params = { itemId, storageId };
     if (toStorageIndex !== undefined) params.toStorageIndex = toStorageIndex;
@@ -135,6 +137,9 @@ class Actions {
   moveStorageItem(itemId, storageId, toStorageIndex) {
     this._game("MoveStorageItem", { itemId, storageId, toStorageIndex });
   }
+  swapItemWithStorage(storageId, inventoryItemId, storageItemId, { toStorageIndex, toInventoryIndex } = {}) {
+    this._game("SwapItemWithStorage", { storageId, inventoryItemId, storageItemId, toStorageIndex, toInventoryIndex });
+  }
   logItems() { this._game("LogItems"); }
 
   // =====================
@@ -143,6 +148,7 @@ class Actions {
 
   throwSnowball() { this._game("ThrowSnowball"); }
   checkFriendBonus() { this._game("CheckFriendBonus"); }
+  quinoaTutorialSkipped() { this._game("QuinoaTutorialSkipped"); }
 }
 
 module.exports = { Actions };
