@@ -1,3 +1,5 @@
+const crypto = require("crypto");
+
 const GAME = "Quinoa";
 const ROOM_SCOPE = ["Room"];
 const GAME_SCOPE = ["Room", GAME];
@@ -13,6 +15,11 @@ class Actions {
 
   _room(type, params) { this._send(ROOM_SCOPE, type, params); }
   _game(type, params) { this._send(GAME_SCOPE, type, params); }
+
+  // RPC-style game actions expect a response and are wrapped in QuinoaCommand with a requestId.
+  _quinoaCommand(command) {
+    this._send(GAME_SCOPE, "QuinoaCommand", { requestId: crypto.randomUUID(), command });
+  }
 
   // =====================
   // Session / Heartbeat
@@ -55,13 +62,14 @@ class Actions {
   plantSeed(slot, species) { this._game("PlantSeed", { slot, species }); }
   waterPlant(slot) { this._game("WaterPlant", { slot }); }
   harvestCrop(slot, slotsIndex) {
-    const params = { slot };
-    if (slotsIndex !== undefined) params.slotsIndex = slotsIndex;
-    this._game("HarvestCrop", params);
+    const command = { type: "HarvestCrop", slot };
+    if (slotsIndex !== undefined) command.slotsIndex = slotsIndex;
+    this._quinoaCommand(command);
   }
   sellAllCrops() { this._game("SellAllCrops"); }
   plantGardenPlant(slot, itemId) { this._game("PlantGardenPlant", { slot, itemId }); }
-  potPlant(slot) { this._game("PotPlant", { slot }); }
+  potPlant(slot) { this._quinoaCommand({ type: "PotPlant", slot }); }
+  preserve(itemId, growSlotIdx) { this._quinoaCommand({ type: "Preserve", itemId, growSlotIdx }); }
   mutationPotion(tileObjectIdx, growSlotIdx, mutation) {
     this._game("MutationPotion", { tileObjectIdx, growSlotIdx, mutation });
   }
