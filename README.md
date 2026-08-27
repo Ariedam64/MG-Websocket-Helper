@@ -29,7 +29,7 @@ node main.js
 ```
 ├── main.js               # Entry point
 ├── connection.js          # WebSocket connection (handshake, ping/pong)
-├── actions.js             # 51 sendable actions
+├── actions.js             # 65 sendable actions
 ├── .env                   # Credentials (not committed)
 ├── utils/
 │   └── version.js         # Fetches game version dynamically
@@ -99,7 +99,7 @@ player.getAllPets()             // inventory + hutch + active
 
 ## Actions
 
-51 actions available:
+65 actions available:
 
 ```js
 const actions = new Actions(conn);
@@ -115,11 +115,8 @@ actions.usurpHost()
 actions.move(x, y)
 actions.teleport(x, y)
 
-// Shop
-actions.purchaseSeed(species)
-actions.purchaseTool(toolId)
-actions.purchaseEgg(eggId)
-actions.purchaseDecor(decorId)
+// Shop — item is { itemType, species | toolId | eggId | decorId }
+actions.purchaseShopItem(shop, item)
 
 // Garden
 actions.plantSeed(tile, species)
@@ -131,6 +128,9 @@ actions.potPlant(tile)
 actions.mutationPotion(tile, growSlotIdx, mutation)
 actions.cropCleanser(tile, growSlotIdx)
 actions.removeGardenObject(tile, slotType)
+actions.preserve(itemId, growSlotIdx)
+actions.displayCrop(tileType, tileIndex, itemId)
+actions.pickupDisplayedCrop(tileType, tileIndex)
 actions.wish(itemId)
 
 // Decor
@@ -148,6 +148,14 @@ actions.swapPetFromStorage(petSlotId, storagePetId, storageId)
 actions.movePetSlot(petSlotId, toIndex)
 actions.growEgg(tile, eggId)
 actions.hatchEgg(tile)
+actions.equipPetCosmetic(petItemId, slotCategory, cosmeticId)
+
+// Pet teams
+actions.savePetTeam(teamId, name, petIds)
+actions.applyPetTeam(teamId)
+actions.deletePetTeam(teamId)
+actions.movePetTeam(movePetTeamId, toIndex)
+actions.setPetTeamEmblem(teamId, emblem)
 
 // Inventory / Storage
 actions.moveInventoryItem(moveItemId, toIndex)
@@ -180,5 +188,39 @@ Available: `session`, `social`, `movement`, `shop`, `garden`, `pet`, `inventory`
 - **URL**: `wss://magicgarden.gg/version/{version}/api/rooms/{room}/connect`
 - **Auth**: Cookie `mc_jwt={token}`
 - **Welcome**: full state (room + game) received on connect
-- **PartialState**: JSON patches (RFC 6902) for updates
+- **RoomFrame**: JSON patches (RFC 6902) for updates, under `state.patches`.
+  Normalized to the legacy `PartialState` shape by `normalizePartialState`.
 - **Keepalive**: server sends `ping`, client responds `pong`
+
+### QuinoaCommand envelope
+
+Client-to-server gameplay actions are wrapped in an envelope that feeds the
+server's prediction/rollback system:
+
+```json
+{
+  "scopePath": ["Room", "Quinoa"],
+  "type": "QuinoaCommand",
+  "requestId": "<crypto.randomUUID()>",
+  "commandSequence": 1,
+  "command": { "type": "FeedPet", "petItemId": "...", "cropItemId": "..." }
+}
+```
+
+- `commandSequence` starts at `Welcome.executedCommandSequence + 1` and
+  increments once per command. `Connection` tracks it; commands sent before
+  `Welcome` are queued and flushed with the right sequence.
+- The server replies with `QuinoaCommandResult` (`{ requestId, ok, code }`).
+  `Actions` methods return a promise resolving to that result, or `null` after
+  5s / on disconnect. The promise never rejects, so it can be ignored.
+- `Ping` and `PlayerPosition` are not commands and stay flat.
+- Room-scoped messages (`Chat`, `Emote`, `RestartGame`, `UsurpHost`, …) are
+  never wrapped.
+
+The old flat format (`{ scopePath, type, ...params }`) is still honoured by the
+server but is being removed. To fall back to it:
+
+```js
+const { Actions, COMMAND_MODES } = require("./actions");
+const actions = new Actions(conn, { commandMode: COMMAND_MODES.LEGACY });
+```
