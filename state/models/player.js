@@ -7,7 +7,9 @@ class Player {
     this.discordAvatarUrl = roomData.discordAvatarUrl;
     this.cosmetic = roomData.cosmetic; // { color, avatar[] }
     this.emoteData = roomData.emoteData;
-    this.databaseUserId = roomData.databaseUserId;
+    // The server renamed `databaseUserId` to `discordUserId`; accept either.
+    this.discordUserId = roomData.discordUserId ?? null;
+    this.databaseUserId = roomData.discordUserId ?? roomData.databaseUserId ?? null;
     this.guildId = roomData.guildId;
     this.secondsRemainingUntilChatEnabled =
       roomData.secondsRemainingUntilChatEnabled;
@@ -26,11 +28,12 @@ class Player {
 
     // Slot data
     this.coins = 0;
+    this.magicDust = 0;
     this.schemaVersion = null;
 
     // Inventory
     this.inventory = []; // mixed items (Seeds, Tools, Eggs, Plants, Pets, Produce, Decor)
-    this.storages = []; // PetHutch, DecorShed, SeedSilo, FeedingTrough
+    this.storages = []; // PetHutch, DecorShed, SeedSilo, FeedingTrough, ToolShack
     this.favoritedItemIds = [];
 
     // Garden
@@ -38,6 +41,7 @@ class Player {
 
     // Active pets (deployed on the field, not in inventory/hutch)
     this.petSlots = [];
+    this.petTeams = [];
 
     // Shops tracking (per-player purchases & custom restocks)
     this.shopPurchases = {};
@@ -68,7 +72,7 @@ class Player {
     this.customRestockInventories = slot.customRestockInventories || this.customRestockInventories;
     this.hasBeenSupersededByAnotherRoom = slot.hasBeenSupersededByAnotherRoom || false;
     this.lastSlotMachineInfo = slot.lastSlotMachineInfo || null;
-    this.selectedItemIndex = slot.notAuthoritative_selectedItemIndex || null;
+    this.selectedItemIndex = slot.notAuthoritative_selectedItemIndex ?? null;
 
     // Slot data fields
     const data = slot.data;
@@ -76,6 +80,7 @@ class Player {
 
     this.schemaVersion = data.schemaVersion || null;
     this.coins = data.coinsCount || 0;
+    this.magicDust = data.magicDustCount || 0;
 
     // Inventory
     this.inventory = data.inventory?.items || [];
@@ -87,6 +92,7 @@ class Player {
 
     // Active pet slots
     this.petSlots = data.petSlots || [];
+    this.petTeams = data.petTeams || [];
 
     // Shop tracking
     this.shopPurchases = data.shopPurchases || {};
@@ -155,6 +161,10 @@ class Player {
     return this.getStorage("FeedingTrough")?.items || [];
   }
 
+  getToolShack() {
+    return this.getStorage("ToolShack")?.items || [];
+  }
+
   // --- Garden helpers ---
 
   getGardenTiles() {
@@ -165,18 +175,33 @@ class Player {
     return this.garden?.boardwalkTileObjects || {};
   }
 
-  getGardenPlants() {
-    const tiles = this.getGardenTiles();
+  _gardenObjects(objectType, tiles = this.getGardenTiles()) {
     return Object.entries(tiles)
-      .filter(([, tile]) => tile.objectType === "plant")
+      .filter(([, tile]) => tile?.objectType === objectType)
       .map(([tileId, tile]) => ({ tileId: parseInt(tileId), ...tile }));
   }
 
+  getGardenPlants() {
+    return this._gardenObjects("plant");
+  }
+
   getGardenDecor() {
-    const tiles = this.getGardenTiles();
-    return Object.entries(tiles)
-      .filter(([, tile]) => tile.objectType === "decor")
-      .map(([tileId, tile]) => ({ tileId: parseInt(tileId), ...tile }));
+    return this._gardenObjects("decor");
+  }
+
+  getGardenEggs() {
+    return this._gardenObjects("egg");
+  }
+
+  /**
+   * Placed crystals (`crystalType`, `remainingActiveSeconds`), on the dirt and
+   * on the boardwalk, each tagged with its `tileType` ("Dirt" / "Boardwalk").
+   */
+  getCrystals() {
+    return [
+      ...this._gardenObjects("crystal").map((c) => ({ tileType: "Dirt", ...c })),
+      ...this._gardenObjects("crystal", this.getBoardwalkTiles()).map((c) => ({ tileType: "Boardwalk", ...c })),
+    ];
   }
 
   // --- Pet slots (active/deployed pets) ---

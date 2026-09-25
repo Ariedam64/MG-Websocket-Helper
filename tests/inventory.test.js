@@ -213,5 +213,5 @@ runTest(async ({ actions, player, expect }) => {
   }
 
   // --- LogItems ---
-  await expect("LogItems", () => actions.logItems());
+  await expect("LogItem", () => actions.logItem({ kind: "inventoryItem", itemId: player.inventory[0]?.id }));
 });

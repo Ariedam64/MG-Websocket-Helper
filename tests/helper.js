@@ -1,6 +1,6 @@
 require("dotenv").config({ path: require("path").join(__dirname, "../.env") });
 const { Connection } = require("../connection");
-const { fetchVersion } = require("../utils/version");
+const { fetchVersionForRoom } = require("../utils/version");
 const { GameState } = require("../state/state");
 const { Actions } = require("../actions");
 
@@ -18,14 +18,22 @@ const RESET = "\x1b[0m";
  * @param {(ctx: { conn, state, actions, player, expect }) => Promise<void>} testFn
  */
 async function runTest(testFn) {
-  const version = await fetchVersion();
-  const conn = new Connection({ cookie: COOKIE, room: ROOM, version });
+  const version = await fetchVersionForRoom(ROOM);
+  // A test run must end on failure, not loop on reconnects.
+  const conn = new Connection({ cookie: COOKIE, room: ROOM, version, reconnect: false });
   const state = new GameState();
   const actions = new Actions(conn);
 
   let ready = false;
   let patchListener = null;
   const results = [];
+
+  conn.onStatus = (status, info) => {
+    if (status !== "disconnected" && status !== "error") return;
+    if (info.manual) return; // our own disconnect()
+    console.error(`${RED}[WS] ${status} ${info.code ?? ""} ${info.reason || info.message || ""}${RESET}`);
+    process.exit(1);
+  };
 
   conn.onMessage = (msg) => {
     state.handleMessage(msg);
@@ -37,12 +45,12 @@ async function runTest(testFn) {
 
     // Wait until we have the player slot loaded
     if (!ready && msg.type === "PartialState" && state.players.size > 0) {
-      const player = state.getAllPlayers()[0];
+      const player = state.getSelf();
       if (player && player.coins > 0) {
         ready = true;
         console.log(`\n${DIM}[TEST] Ready — ${player.name} | ${player.coins.toLocaleString()} coins${RESET}\n`);
 
-        testFn({ conn, state, actions, player, expect })
+        testFn({ conn, state, actions, player, expect, check })
           .then(() => {
             printResults();
             setTimeout(() => {
@@ -129,6 +137,13 @@ async function runTest(testFn) {
         }
       }, timeout);
     });
+  }
+
+  /** Record a result from a direct state check, for actions that yield no patch. */
+  function check(name, passed, detail = "") {
+    const icon = passed ? `${GREEN}PASS${RESET}` : `${RED}FAIL${RESET}`;
+    console.log(`  [${icon}] ${name}${detail ? ` ${DIM}${detail}${RESET}` : ""}`);
+    results.push({ name, status: passed ? "PASS" : "FAIL", detail });
   }
 
   function printResults() {

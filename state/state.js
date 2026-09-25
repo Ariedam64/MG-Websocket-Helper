@@ -1,14 +1,43 @@
-const { applyPatch } = require("./jsonPatch");
+const { applyPointer } = require("./jsonPatch");
 const { Player } = require("./models/player");
 const { Shop } = require("./models/shop");
 const { Room } = require("./models/room");
 
+/**
+ * The game renamed the slot's owner field from `playerId` to `userId` (same
+ * value: the id Welcome reports as `selfPlayerId`); slots now carry
+ * `playerId: null`. Both names are accepted.
+ */
+function matchesPlayer(slot, playerId) {
+  if (!playerId) return false;
+  return slot.userId === playerId || slot.playerId === playerId || slot.data?.playerId === playerId;
+}
+
+/**
+ * Fallback match on the player's Discord/database id. The id fields sit at the
+ * slot's top level, but some payloads repeat them inside `data`.
+ */
+function matchesDb(slot, dbId) {
+  if (!dbId) return false;
+  const data = slot.data || {};
+  return (
+    slot.discordUserId === dbId ||
+    slot.databaseUserId === dbId ||
+    data.discordUserId === dbId ||
+    data.databaseUserId === dbId ||
+    data.userId === dbId
+  );
+}
+
 class GameState {
   constructor() {
-    // Raw state (for patch application)
+    // Raw state: patches apply to fullState, roomState / gameState are views
+    // of it (fullState.data / fullState.child.data)
+    this.fullState = null;
     this.roomState = null;
     this.gameState = null;
     this.welcomed = false;
+    this.selfPlayerId = null; // our own player id, as Welcome reports it
 
     // Models
     this.room = null;
@@ -24,46 +53,38 @@ class GameState {
     const fullState = msg.fullState;
     if (!fullState) return;
 
-    this.roomState = fullState.data || null;
-    this.gameState = fullState.child?.data || null;
+    this.fullState = fullState;
+    this._syncRawState();
+    this.selfPlayerId = msg.selfPlayerId || this.selfPlayerId;
     this.welcomed = true;
 
     this._buildModels();
   }
 
   /**
-   * Apply patches from a PartialState message.
+   * Apply patches from a PartialState message (a normalized RoomFrame).
+   *
+   * Like the game, every patch applies to the whole `fullState`: `/data/...`
+   * is the room, `/child/data/...` the game. A whole `/child` or `/data` can
+   * be replaced, hence the re-sync of the two views afterwards.
    */
   handlePartialState(msg) {
     const patches = msg.patches;
-    if (!Array.isArray(patches) || patches.length === 0) return;
+    if (!this.fullState || !Array.isArray(patches) || patches.length === 0) return;
 
-    for (const patch of patches) {
-      const { path, value, op } = patch;
-      if (!path) continue;
-
-      // Room state patches
-      if (
-        this.roomState &&
-        (/^\/data\/players\/\d+(\/.*)?$/.test(path) ||
-          /^\/data\/(roomId|roomSessionId|hostPlayerId|gameVotes|chat|selectedGame)(\/.*)?$/.test(
-            path
-          ))
-      ) {
-        this.roomState = applyPatch(this.roomState, path, value, op);
-        continue;
-      }
-
-      // Game state patches (everything under /child)
-      if (this.gameState && path.startsWith("/child")) {
-        const gamePath = path.replace(/^\/child/, "");
-        this.gameState = applyPatch(this.gameState, gamePath, value, op);
-        continue;
-      }
+    for (const { path, value, op } of patches) {
+      if (typeof path !== "string") continue;
+      this.fullState = applyPointer(this.fullState, path, value, op);
     }
+    this._syncRawState();
 
     // Rebuild models from updated raw state
     this._buildModels();
+  }
+
+  _syncRawState() {
+    this.roomState = this.fullState?.data || null;
+    this.gameState = this.fullState?.child?.data || null;
   }
 
   /**
@@ -103,15 +124,11 @@ class GameState {
     for (const roomPlayer of roomPlayers) {
       const player = new Player(roomPlayer);
 
-      // Find matching userSlot by playerId or databaseUserId
       for (let i = 0; i < userSlots.length; i++) {
         const slot = userSlots[i];
         if (!slot) continue;
 
-        if (
-          slot.playerId === player.id ||
-          slot.databaseUserId === player.databaseUserId
-        ) {
+        if (matchesPlayer(slot, player.id) || matchesDb(slot, player.databaseUserId)) {
           player.applySlot(slot, i);
           break;
         }
@@ -144,6 +161,18 @@ class GameState {
     return this.players.get(playerId);
   }
 
+  /** Our own player, once Welcome has told us which one it is. */
+  getSelf() {
+    return this.selfPlayerId ? this.players.get(this.selfPlayerId) : undefined;
+  }
+
+  /** Stock left in a shop for our own player, see Shop.remainingStocks(). */
+  getRemainingStocks(type) {
+    const shop = this.shops.get(type);
+    if (!shop) return {};
+    return shop.remainingStocks(this.getSelf()?.shopPurchases?.[type]);
+  }
+
   getAllPlayers() {
     return [...this.players.values()];
   }
@@ -161,9 +190,11 @@ class GameState {
   }
 
   reset() {
+    this.fullState = null;
     this.roomState = null;
     this.gameState = null;
     this.welcomed = false;
+    this.selfPlayerId = null;
     this.room = null;
     this.players.clear();
     this.shops.clear();
